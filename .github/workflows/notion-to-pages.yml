@@ -30,15 +30,16 @@ jobs:
       - name: Create output directory
         run: mkdir -p notion-output site
 
-      # Fetch and process Notion page using notion-to-markdown
+      # Fetch and process Notion page using cheerio HTML parser
       - name: Fetch and convert Notion page to HTML
         run: |
-          # Install notion-to-markdown
-          npm install notion-to-markdown
+          # Install cheerio for HTML parsing
+          npm install cheerio axios
           
-          # Create a Node.js script to convert Notion to HTML
+          # Create a Node.js script to fetch and parse the Notion page
           cat > fetch-notion.js << 'EOF'
-          const { NotionToMarkdown } = require('notion-to-markdown');
+          const axios = require('axios');
+          const cheerio = require('cheerio');
           const fs = require('fs');
           const path = require('path');
           
@@ -49,28 +50,45 @@ jobs:
             fs.mkdirSync(outputDir, { recursive: true });
           }
           
-          // Extract page ID from URL
-          const pageId = notionPageUrl.split('/').pop().split('?')[0];
-          
           (async () => {
             try {
-              const n2m = new NotionToMarkdown();
-              const markdown = await n2m.pageToMarkdown(pageId);
+              console.log('Fetching Notion page...');
+              const response = await axios.get(notionPageUrl, {
+                headers: {
+                  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                }
+              });
               
-              // Simple markdown to HTML converter
-              const mdText = markdown.parent;
-              let html = mdText
-                .replace(/^# (.*?)$/gm, '<h1>$1</h1>')
-                .replace(/^## (.*?)$/gm, '<h2>$1</h2>')
-                .replace(/^### (.*?)$/gm, '<h3>$1</h3>')
-                .replace(/^- (.*?)$/gm, '<li>$1</li>')
-                .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-                .replace(/\*(.*?)\*/g, '<em>$1</em>')
-                .replace(/\n/g, '<br>');
+              const $ = cheerio.load(response.data);
               
-              // Wrap lists
-              html = html.replace(/(<li>.*?<\/li>)/gs, (match) => '<ul>' + match + '</ul>');
-              html = html.replace(/<\/ul><ul>/g, '');
+              // Extract title
+              const title = $('title').text() || 'Portfolio';
+              
+              // Extract main content - try different selectors
+              let content = '';
+              
+              // Try to find the main content area
+              const mainContent = $('[role="main"]').html() ||
+                                  $('main').html() ||
+                                  $('[data-content-editable-root]').html() ||
+                                  $('article').html() ||
+                                  $('body').html();
+              
+              if (mainContent) {
+                content = mainContent;
+                console.log('✓ Found content (length: ' + content.length + ')');
+              } else {
+                content = '<p>Unable to extract content from Notion page.</p>';
+                console.log('✗ Could not find main content');
+              }
+              
+              // Clean up content
+              content = content
+                .replace(/<script[^>]*>.*?<\/script>/gs, '')
+                .replace(/<style[^>]*>.*?<\/style>/gs, '')
+                .replace(/style="[^"]*"/g, '')
+                .replace(/class="[^"]*"/g, '')
+                .substring(0, 500000); // Limit size
               
               // Create full HTML
               const fullHtml = `<!DOCTYPE html>
@@ -78,7 +96,7 @@ jobs:
           <head>
               <meta charset="UTF-8">
               <meta name="viewport" content="width=device-width, initial-scale=1.0">
-              <title>Portfolio - Dmitrij Čelinski</title>
+              <title>${title}</title>
               <style>
                   * { margin: 0; padding: 0; box-sizing: border-box; }
                   body { 
@@ -86,34 +104,40 @@ jobs:
                       line-height: 1.6; color: #37352f; background: #fff;
                   }
                   .container { max-width: 900px; margin: 0 auto; padding: 40px 20px; }
-                  h1, h2, h3 { margin: 20px 0 10px 0; }
+                  h1, h2, h3, h4, h5, h6 { margin: 20px 0 10px 0; font-weight: 600; }
                   h1 { font-size: 32px; }
                   h2 { font-size: 24px; }
                   h3 { font-size: 20px; }
-                  p, li { margin-bottom: 12px; }
+                  p { margin: 12px 0; }
                   a { color: #0969da; text-decoration: none; }
                   a:hover { text-decoration: underline; }
-                  strong { font-weight: 600; }
-                  ul { margin: 12px 0 12px 24px; }
+                  strong, b { font-weight: 600; }
+                  em, i { font-style: italic; }
+                  ul, ol { margin: 12px 0 12px 24px; }
                   li { margin-bottom: 8px; }
-                  code { background: #f6f8fa; padding: 2px 6px; border-radius: 3px; font-family: monospace; }
+                  code { background: #f6f8fa; padding: 2px 6px; border-radius: 3px; font-family: monospace; font-size: 14px; }
+                  pre { background: #f6f8fa; padding: 12px; border-radius: 6px; overflow-x: auto; margin: 12px 0; }
+                  img { max-width: 100%; height: auto; margin: 12px 0; }
+                  blockquote { border-left: 4px solid #d0d0d0; padding-left: 12px; margin: 12px 0; color: #626262; }
+                  table { border-collapse: collapse; width: 100%; margin: 12px 0; }
+                  th, td { border: 1px solid #d0d0d0; padding: 8px 12px; text-align: left; }
+                  th { background: #f6f8fa; font-weight: 600; }
                   .nav { margin-bottom: 30px; padding-bottom: 20px; border-bottom: 1px solid #e5e5e5; }
                   .nav a { margin-right: 15px; }
               </style>
           </head>
           <body>
               <nav class="nav">
-                  <a href="index.html">← Back to portfolio</a>
+                  <a href="index.html">← Back</a>
               </nav>
               <div class="container">
-                  ${html}
+                  ${content}
               </div>
           </body>
           </html>`;
               
               fs.writeFileSync(path.join(outputDir, 'portfolio.html'), fullHtml);
-              console.log('✓ Successfully converted Notion page to HTML');
-              console.log('Content length:', html.length);
+              console.log('✓ Successfully created portfolio.html');
             } catch (err) {
               console.error('Error:', err.message);
               process.exit(1);
