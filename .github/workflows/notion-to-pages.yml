@@ -27,131 +27,63 @@ jobs:
           node-version: '18'
 
       # Install dependencies for Notion processing
-      - name: Install notion2md
-        run: npm install -g notion2md
+      - name: Install notion-to-html
+        run: npm install -g notion-to-html
 
       # Create output directory for generated site
       - name: Create output directory
         run: mkdir -p notion-output
 
-      # Fetch Notion page and convert to Markdown
+      # Fetch Notion page and convert to HTML
       - name: Fetch and convert Notion page
         env:
           NOTION_PAGE_URL: 'https://dmitrijscelinskis.notion.site/portfolio'
         run: |
-          # Export Notion page with all subpages
-          notion2md \
+          # Export public Notion page with all subpages
+          notion-to-html \
             --url "$NOTION_PAGE_URL" \
             --output-dir ./notion-output \
-            --recursive \
-            --include-subpages
+            --recursive
 
-      # Convert Markdown to static HTML with local links
-      - name: Generate static HTML website
+      # Copy and process generated HTML files
+      - name: Generate static website
         run: |
-          # Create a directory for static site
+          # Create site directory
           mkdir -p site
           
-          # Use a Node.js script to convert Markdown to HTML with local links
-          cat > convert.js << 'EOF'
+          # Copy HTML files from notion-output to site
+          cp notion-output/*.html site/ || true
+          
+          # Fix internal links to use local paths
+          cat > fix-links.js << 'EOF'
           const fs = require('fs');
           const path = require('path');
-          const marked = require('marked');
           
-          // Install marked if not present
-          try {
-            require('marked');
-          } catch (e) {
-            console.log('Installing marked...');
-            require('child_process').execSync('npm install marked', { stdio: 'inherit' });
-          }
-          
-          const notionDir = './notion-output';
           const siteDir = './site';
+          const files = fs.readdirSync(siteDir).filter(f => f.endsWith('.html'));
           
-          // Create index.html
-          const template = (content, title) => `
-          <!DOCTYPE html>
-          <html lang="en">
-          <head>
-              <meta charset="UTF-8">
-              <meta name="viewport" content="width=device-width, initial-scale=1.0">
-              <title>${title}</title>
-              <style>
-                  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif; line-height: 1.6; max-width: 900px; margin: 0 auto; padding: 20px; color: #333; }
-                  h1, h2, h3 { color: #000; }
-                  a { color: #0969da; text-decoration: none; }
-                  a:hover { text-decoration: underline; }
-                  code { background: #f6f8fa; padding: 2px 6px; border-radius: 3px; font-family: 'Monaco', 'Menlo', monospace; }
-                  pre { background: #f6f8fa; padding: 12px; border-radius: 6px; overflow-x: auto; }
-                  img { max-width: 100%; height: auto; }
-                  nav { margin-bottom: 30px; padding-bottom: 20px; border-bottom: 1px solid #eaecef; }
-                  nav a { margin-right: 15px; }
-              </style>
-          </head>
-          <body>
-              <nav><a href="index.html">Home</a></nav>
-              <main>${content}</main>
-          </body>
-          </html>
-          `;
-          
-          // Helper function to convert internal Notion links to local links
-          const convertLinks = (content) => {
-              // Convert Notion-style links to local HTML links
-              return content
-                  .replace(/\[([^\]]+)\]\(https:\/\/dmitrijscelinskis\.notion\.site\/[^)]+\)/g, (match, text) => {
-                      const slug = text.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
-                      return `[${text}](./${slug}.html)`;
-                  })
-                  .replace(/\[([^\]]+)\]\((?!http|mailto|#)([^)]+)\)/g, (match, text, url) => {
-                      if (url.endsWith('.md')) {
-                          url = url.replace('.md', '.html');
-                      }
-                      return `[${text}](${url})`;
-                  });
-          };
-          
-          // Process Markdown files
-          const processMarkdownFiles = () => {
-              if (!fs.existsSync(notionDir)) {
-                  console.log('Notion output directory not found, creating placeholder...');
-                  return;
-              }
+          files.forEach(file => {
+              const filePath = path.join(siteDir, file);
+              let content = fs.readFileSync(filePath, 'utf-8');
               
-              const files = fs.readdirSync(notionDir).filter(f => f.endsWith('.md'));
-              
-              if (files.length === 0) {
-                  console.log('No markdown files found in notion-output');
-                  return;
-              }
-              
-              files.forEach(file => {
-                  const mdPath = path.join(notionDir, file);
-                  const htmlFile = file.replace('.md', '.html');
-                  const htmlPath = path.join(siteDir, htmlFile);
-                  
-                  try {
-                      let content = fs.readFileSync(mdPath, 'utf-8');
-                      content = convertLinks(content);
-                      
-                      const htmlContent = marked.parse(content);
-                      const pageTitle = file.replace('.md', '').replace(/[-_]/g, ' ');
-                      const fullHtml = template(htmlContent, pageTitle);
-                      
-                      fs.writeFileSync(htmlPath, fullHtml);
-                      console.log(`✓ Converted ${file} to ${htmlFile}`);
-                  } catch (error) {
-                      console.error(`Error processing ${file}:`, error.message);
+              // Convert Notion links to local links
+              content = content.replace(
+                  /href=["']https:\/\/dmitrijscelinskis\.notion\.site\/[^"']+["']/g,
+                  (match) => {
+                      // Extract the title and convert to filename
+                      const url = match.match(/href=["']([^"']+)["']/)[1];
+                      const title = decodeURIComponent(url.split('/').pop().split('?')[0]);
+                      return `href="./${title}.html"`;
                   }
-              });
-          };
-          
-          processMarkdownFiles();
+              );
+              
+              fs.writeFileSync(filePath, content);
+              console.log(`✓ Fixed links in ${file}`);
+          });
           EOF
           
-          npm install marked
-          node convert.js
+          npm install
+          node fix-links.js
 
       # Create a basic index page if it doesn't exist
       - name: Ensure index.html exists
