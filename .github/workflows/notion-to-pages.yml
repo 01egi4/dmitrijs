@@ -47,8 +47,7 @@ jobs:
               console.log('Launching Playwright browser...');
               browser = await chromium.launch({ headless: true });
               
-              const context = await browser.createBrowserContext();
-              const page = await context.newPage();
+              const page = await browser.newPage();
               
               console.log(`Navigating to: ${NOTION_URL}`);
               const response = await page.goto(NOTION_URL, { waitUntil: 'networkidle', timeout: 60000 });
