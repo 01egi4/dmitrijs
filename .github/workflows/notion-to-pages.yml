@@ -50,11 +50,11 @@ jobs:
               const page = await browser.newPage();
               
               console.log(`Navigating to: ${NOTION_URL}`);
-              const response = await page.goto(NOTION_URL, { waitUntil: 'networkidle', timeout: 60000 });
+              const response = await page.goto(NOTION_URL, { waitUntil: 'domcontentloaded', timeout: 30000 });
               console.log(`Response status: ${response.status()}`);
               
-              // Wait for content to appear
-              await page.waitForTimeout(3000);
+              // Wait for content to render
+              await page.waitForTimeout(5000);
               
               console.log('Extracting content...');
               const content = await page.evaluate(() => {
