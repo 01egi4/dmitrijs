@@ -1,0 +1,13 @@
+body {
+  margin: 0;
+}
+
+.notion {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.notion-page {
+  max-width: 900px;
+  padding-left: 24px;
+  padding-right: 24px;
+}
