@@ -58,16 +58,17 @@ jobs:
               const page = await browser.newPage();
               await page.goto(notionPageUrl, { waitUntil: 'networkidle2', timeout: 60000 });
               
-              // Wait for content to load
-              await page.waitForTimeout(2000);
-              
-              // Get the rendered HTML
-              const html = await page.content();
+              // Wait for Notion content to render
+              await page.evaluate(() => {
+                return new Promise((resolve) => {
+                  setTimeout(resolve, 3000);
+                });
+              });
               
               // Extract meaningful content
               const content = await page.evaluate(() => {
                 const contentDiv = document.querySelector('[data-content-editable-root]') || 
-                                   document.querySelector('.notion-page-content') ||
+                                   document.querySelector('[role="main"]') ||
                                    document.querySelector('main') ||
                                    document.body;
                 return contentDiv ? contentDiv.innerHTML : document.body.innerHTML;
