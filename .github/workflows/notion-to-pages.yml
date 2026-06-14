@@ -30,15 +30,15 @@ jobs:
       - name: Create output directory
         run: mkdir -p notion-output site
 
-      # Fetch and process Notion page using cheerio HTML parser
+      # Fetch and process Notion page using native Node.js + cheerio
       - name: Fetch and convert Notion page to HTML
         run: |
-          # Install cheerio for HTML parsing
-          npm install cheerio axios
+          # Install only cheerio (lightweight HTML parser)
+          npm install cheerio
           
           # Create a Node.js script to fetch and parse the Notion page
           cat > fetch-notion.js << 'EOF'
-          const axios = require('axios');
+          const https = require('https');
           const cheerio = require('cheerio');
           const fs = require('fs');
           const path = require('path');
@@ -50,45 +50,48 @@ jobs:
             fs.mkdirSync(outputDir, { recursive: true });
           }
           
-          (async () => {
-            try {
-              console.log('Fetching Notion page...');
-              const response = await axios.get(notionPageUrl, {
+          function fetchPage(url) {
+            return new Promise((resolve, reject) => {
+              https.get(url, {
                 headers: {
                   'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
                 }
-              });
+              }, (res) => {
+                let data = '';
+                res.on('data', chunk => { data += chunk; });
+                res.on('end', () => {
+                  if (res.statusCode === 200) {
+                    resolve(data);
+                  } else {
+                    reject(new Error('Status: ' + res.statusCode));
+                  }
+                });
+              }).on('error', reject);
+            });
+          }
+          
+          (async () => {
+            try {
+              console.log('Fetching Notion page...');
+              const html = await fetchPage(notionPageUrl);
+              console.log('✓ Fetched ' + html.length + ' bytes');
               
-              const $ = cheerio.load(response.data);
+              const $ = cheerio.load(html);
               
               // Extract title
               const title = $('title').text() || 'Portfolio';
               
-              // Extract main content - try different selectors
-              let content = '';
+              // Extract body content
+              let content = $('body').html() || html;
               
-              // Try to find the main content area
-              const mainContent = $('[role="main"]').html() ||
-                                  $('main').html() ||
-                                  $('[data-content-editable-root]').html() ||
-                                  $('article').html() ||
-                                  $('body').html();
-              
-              if (mainContent) {
-                content = mainContent;
-                console.log('✓ Found content (length: ' + content.length + ')');
-              } else {
-                content = '<p>Unable to extract content from Notion page.</p>';
-                console.log('✗ Could not find main content');
-              }
-              
-              // Clean up content
+              // Clean up - remove scripts, styles, and large chunks
               content = content
                 .replace(/<script[^>]*>.*?<\/script>/gs, '')
                 .replace(/<style[^>]*>.*?<\/style>/gs, '')
-                .replace(/style="[^"]*"/g, '')
-                .replace(/class="[^"]*"/g, '')
-                .substring(0, 500000); // Limit size
+                .replace(/<noscript[^>]*>.*?<\/noscript>/gs, '')
+                .substring(0, 1000000); // Limit to 1MB
+              
+              console.log('✓ Extracted content (' + content.length + ' bytes)');
               
               // Create full HTML
               const fullHtml = `<!DOCTYPE html>
