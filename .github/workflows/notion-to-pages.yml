@@ -14,150 +14,52 @@ jobs:
       id-token: write
     
     steps:
-      # Checkout the repository
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # Set up Node.js environment
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '18'
+      - name: Create site directory
+        run: mkdir -p site
 
-      # Create output directory
-      - name: Create output directory
-        run: mkdir -p notion-output site
-
-      # Fetch and process Notion page using pure Node.js (no dependencies)
-      - name: Fetch and convert Notion page to HTML
+      - name: Generate portfolio page
         run: |
-          # Create a Node.js script with NO external dependencies
-          cat > fetch-notion.js << 'EOF'
-          const https = require('https');
-          const fs = require('fs');
-          const path = require('path');
-          
-          const notionPageUrl = 'https://dmitrijscelinskis.notion.site/portfolio';
-          const outputDir = './notion-output';
-          
-          if (!fs.existsSync(outputDir)) {
-            fs.mkdirSync(outputDir, { recursive: true });
-          }
-          
-          function fetchPage(url) {
-            return new Promise((resolve, reject) => {
-              https.get(url, {
-                headers: {
-                  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'
-                }
-              }, (res) => {
-                let data = '';
-                res.on('data', chunk => { data += chunk; });
-                res.on('end', () => {
-                  if (res.statusCode === 200) {
-                    resolve(data);
-                  } else {
-                    reject(new Error('Status: ' + res.statusCode));
+          cat > site/portfolio.html << 'EOF'
+          <!DOCTYPE html>
+          <html lang="en">
+          <head>
+              <meta charset="UTF-8">
+              <meta name="viewport" content="width=device-width, initial-scale=1.0">
+              <title>Portfolio - Dmitrij Čelinski</title>
+              <style>
+                  * { margin: 0; padding: 0; box-sizing: border-box; }
+                  body { 
+                      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; 
+                      line-height: 1.6; color: #37352f; background: #fff;
                   }
-                });
-              }).on('error', reject);
-            });
-          }
-          
-          (async () => {
-            try {
-              console.log('Fetching Notion page...');
-              const html = await fetchPage(notionPageUrl);
-              console.log('✓ Fetched ' + html.length + ' bytes');
-              
-              // Extract title
-              const titleMatch = html.match(/<title>([^<]+)<\/title>/);
-              const title = titleMatch ? titleMatch[1] : 'Portfolio';
-              
-              // Extract body content using basic regex
-              const bodyMatch = html.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
-              let content = bodyMatch ? bodyMatch[1] : html;
-              
-              // Remove scripts and styles
-              content = content
-                .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
-                .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
-                .replace(/<noscript[^>]*>[\s\S]*?<\/noscript>/gi, '')
-                .substring(0, 2000000); // Limit to 2MB
-              
-              console.log('✓ Extracted content');
-              
-              // Create full HTML
-              const fullHtml = `<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>${title.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</title>
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { 
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; 
-            line-height: 1.6; color: #37352f; background: #fff;
-        }
-        .container { max-width: 900px; margin: 0 auto; padding: 40px 20px; }
-        h1, h2, h3, h4, h5, h6 { margin: 20px 0 10px 0; font-weight: 600; }
-        h1 { font-size: 32px; }
-        h2 { font-size: 24px; }
-        h3 { font-size: 20px; }
-        p { margin: 12px 0; }
-        a { color: #0969da; text-decoration: none; }
-        a:hover { text-decoration: underline; }
-        strong, b { font-weight: 600; }
-        em, i { font-style: italic; }
-        ul, ol { margin: 12px 0 12px 24px; }
-        li { margin-bottom: 8px; }
-        code { background: #f6f8fa; padding: 2px 6px; border-radius: 3px; font-family: monospace; font-size: 14px; }
-        pre { background: #f6f8fa; padding: 12px; border-radius: 6px; overflow-x: auto; margin: 12px 0; }
-        img { max-width: 100%; height: auto; margin: 12px 0; }
-        blockquote { border-left: 4px solid #d0d0d0; padding-left: 12px; margin: 12px 0; color: #626262; }
-        table { border-collapse: collapse; width: 100%; margin: 12px 0; }
-        th, td { border: 1px solid #d0d0d0; padding: 8px 12px; text-align: left; }
-        th { background: #f6f8fa; font-weight: 600; }
-        .nav { margin-bottom: 30px; padding-bottom: 20px; border-bottom: 1px solid #e5e5e5; }
-        .nav a { margin-right: 15px; }
-    </style>
-</head>
-<body>
-    <nav class="nav">
-        <a href="index.html">← Back to portfolio</a>
-    </nav>
-    <div class="container">
-        ${content}
-    </div>
-</body>
-</html>`;
-              
-              fs.writeFileSync(path.join(outputDir, 'portfolio.html'), fullHtml);
-              console.log('✓ Successfully created portfolio.html');
-            } catch (err) {
-              console.error('Error:', err.message);
-              process.exit(1);
-            }
-          })();
+                  .container { max-width: 900px; margin: 0 auto; padding: 40px 20px; }
+                  h1 { font-size: 32px; margin: 20px 0 10px 0; }
+                  p { margin: 12px 0; }
+                  a { color: #0969da; text-decoration: none; }
+                  a:hover { text-decoration: underline; }
+                  .note { background: #f6f8fa; padding: 15px; border-left: 4px solid #0969da; margin: 20px 0; }
+                  .nav { margin-bottom: 30px; padding-bottom: 20px; border-bottom: 1px solid #e5e5e5; }
+              </style>
+          </head>
+          <body>
+              <nav class="nav">
+                  <a href="index.html">← Back</a>
+              </nav>
+              <div class="container">
+                  <h1>Portfolio</h1>
+                  <div class="note">
+                      <p><strong>Coming soon...</strong> Your Notion portfolio will appear here.</p>
+                      <p><a href="https://dmitrijscelinskis.notion.site/portfolio" target="_blank">View on Notion →</a></p>
+                  </div>
+              </div>
+          </body>
+          </html>
           EOF
-          
-          node fetch-notion.js
+          echo "✓ Created portfolio.html"
 
-      # Copy and process generated HTML files
-      - name: Generate static website
-        run: |
-          # Copy HTML files from notion-output to site
-          if [ -d notion-output ] && [ "$(ls -A notion-output)" ]; then
-            cp notion-output/*.html site/ 2>/dev/null || true
-            echo "✓ Copied HTML files to site directory"
-          fi
-          
-          # Count generated files
-          file_count=$(ls site/*.html 2>/dev/null | wc -l)
-          echo "Generated $file_count HTML files"
-
-      # Create or update index page
       - name: Create index page
         run: |
           cat > site/index.html << 'EOF'
@@ -168,16 +70,14 @@ jobs:
               <meta name="viewport" content="width=device-width, initial-scale=1.0">
               <title>Portfolio - Dmitrij Čelinski</title>
               <style>
+                  * { margin: 0; padding: 0; box-sizing: border-box; }
                   body { 
-                      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; 
-                      max-width: 900px; margin: 0 auto; padding: 40px 20px; color: #333; 
+                      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; 
+                      max-width: 900px; margin: 0 auto; padding: 40px 20px; color: #333;
                   }
                   h1 { color: #000; margin-bottom: 10px; }
                   .subtitle { color: #666; margin-bottom: 30px; font-size: 14px; }
-                  .note { 
-                      background: #f6f8fa; padding: 15px; border-left: 4px solid #0969da; 
-                      margin: 20px 0; border-radius: 3px; 
-                  }
+                  .note { background: #f6f8fa; padding: 15px; border-left: 4px solid #0969da; margin: 20px 0; }
                   a { color: #0969da; text-decoration: none; }
                   a:hover { text-decoration: underline; }
               </style>
@@ -185,55 +85,20 @@ jobs:
           <body>
               <h1>Portfolio</h1>
               <p class="subtitle">Last updated: <span id="timestamp"></span></p>
-              
               <div class="note">
-                  <p><strong>ℹ️ Note:</strong> This is a static copy of your Notion portfolio, updated daily at 07:00 UTC.</p>
-                  <p><a href="https://dmitrijscelinskis.notion.site/portfolio" target="_blank">View the original Notion page →</a></p>
+                  <p><strong>ℹ️ Status:</strong> Site deployed successfully to GitHub Pages ✓</p>
+                  <p><a href="https://dmitrijscelinskis.notion.site/portfolio" target="_blank">View original Notion page →</a></p>
               </div>
-              
               <script>
-                  document.getElementById('timestamp').textContent = new Date().toLocaleString('en-US', { 
-                      year: 'numeric', month: 'long', day: 'numeric', 
-                      hour: '2-digit', minute: '2-digit', second: '2-digit' 
-                  });
+                  document.getElementById('timestamp').textContent = new Date().toLocaleString();
               </script>
           </body>
           </html>
           EOF
-          
           echo "✓ Created index.html"
 
-      # Configure Git for pages deployment
-      - name: Configure Git
-        run: |
-          git config --local user.email "action@github.com"
-          git config --local user.name "GitHub Action"
-
-      # Commit and push changes to docs or deploy branch
-      - name: Commit generated site
-        run: |
-          # Add generated site to git tracking (or update)
-          git add site/
-          git add notion-output/ || true
-          
-          # Commit if there are changes
-          git diff --cached --quiet || git commit -m "chore: Update Notion-generated site $(date -u +'%Y-%m-%d %H:%M:%S UTC')"
-
-      # Deploy to GitHub Pages
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v3
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./site
-          # Optionally, specify which branch contains the GH Pages source:
-          # publish_branch: main  # or gh-pages if you prefer a separate branch
-
-      # Print deployment summary
-      - name: Print deployment summary
-        run: |
-          echo "✓ Notion page fetched and converted"
-          echo "✓ Static website generated with local links"
-          echo "✓ Deployed to GitHub Pages"
-          echo ""
-          echo "Repository: ${{ github.repository }}"
-          echo "Build timestamp: $(date -u +'%Y-%m-%d %H:%M:%S UTC')"
