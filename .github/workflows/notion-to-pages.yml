@@ -30,15 +30,15 @@ jobs:
       - name: Create output directory
         run: mkdir -p notion-output site
 
-      # Fetch and process Notion page using Puppeteer for JS rendering
+      # Fetch and process Notion page using notion-to-markdown
       - name: Fetch and convert Notion page to HTML
         run: |
-          # Install Puppeteer
-          npm install puppeteer
+          # Install notion-to-markdown
+          npm install notion-to-markdown
           
-          # Create a Node.js script to render the Notion page
+          # Create a Node.js script to convert Notion to HTML
           cat > fetch-notion.js << 'EOF'
-          const puppeteer = require('puppeteer');
+          const { NotionToMarkdown } = require('notion-to-markdown');
           const fs = require('fs');
           const path = require('path');
           
@@ -49,39 +49,36 @@ jobs:
             fs.mkdirSync(outputDir, { recursive: true });
           }
           
+          // Extract page ID from URL
+          const pageId = notionPageUrl.split('/').pop().split('?')[0];
+          
           (async () => {
             try {
-              const browser = await puppeteer.launch({
-                args: ['--no-sandbox', '--disable-setuid-sandbox']
-              });
+              const n2m = new NotionToMarkdown();
+              const markdown = await n2m.pageToMarkdown(pageId);
               
-              const page = await browser.newPage();
-              await page.goto(notionPageUrl, { waitUntil: 'networkidle2', timeout: 60000 });
+              // Simple markdown to HTML converter
+              const mdText = markdown.parent;
+              let html = mdText
+                .replace(/^# (.*?)$/gm, '<h1>$1</h1>')
+                .replace(/^## (.*?)$/gm, '<h2>$1</h2>')
+                .replace(/^### (.*?)$/gm, '<h3>$1</h3>')
+                .replace(/^- (.*?)$/gm, '<li>$1</li>')
+                .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                .replace(/\*(.*?)\*/g, '<em>$1</em>')
+                .replace(/\n/g, '<br>');
               
-              // Wait for Notion content to render
-              await page.evaluate(() => {
-                return new Promise((resolve) => {
-                  setTimeout(resolve, 3000);
-                });
-              });
+              // Wrap lists
+              html = html.replace(/(<li>.*?<\/li>)/gs, (match) => '<ul>' + match + '</ul>');
+              html = html.replace(/<\/ul><ul>/g, '');
               
-              // Extract meaningful content
-              const content = await page.evaluate(() => {
-                const contentDiv = document.querySelector('[data-content-editable-root]') || 
-                                   document.querySelector('[role="main"]') ||
-                                   document.querySelector('main') ||
-                                   document.body;
-                return contentDiv ? contentDiv.innerHTML : document.body.innerHTML;
-              });
-              
-              // Create a clean HTML file
-              const title = await page.title();
-              const cleanHtml = `<!DOCTYPE html>
+              // Create full HTML
+              const fullHtml = `<!DOCTYPE html>
           <html lang="en">
           <head>
               <meta charset="UTF-8">
               <meta name="viewport" content="width=device-width, initial-scale=1.0">
-              <title>${title}</title>
+              <title>Portfolio - Dmitrij Čelinski</title>
               <style>
                   * { margin: 0; padding: 0; box-sizing: border-box; }
                   body { 
@@ -89,19 +86,17 @@ jobs:
                       line-height: 1.6; color: #37352f; background: #fff;
                   }
                   .container { max-width: 900px; margin: 0 auto; padding: 40px 20px; }
-                  h1, h2, h3, h4, h5, h6 { margin-top: 24px; margin-bottom: 12px; font-weight: 600; }
+                  h1, h2, h3 { margin: 20px 0 10px 0; }
                   h1 { font-size: 32px; }
                   h2 { font-size: 24px; }
                   h3 { font-size: 20px; }
-                  p { margin-bottom: 12px; }
+                  p, li { margin-bottom: 12px; }
                   a { color: #0969da; text-decoration: none; }
                   a:hover { text-decoration: underline; }
-                  code { background: #f6f8fa; padding: 2px 6px; border-radius: 3px; font-family: 'Monaco', monospace; }
-                  pre { background: #f6f8fa; padding: 12px; border-radius: 6px; overflow-x: auto; margin-bottom: 12px; }
-                  img { max-width: 100%; height: auto; }
-                  ul, ol { margin-left: 24px; margin-bottom: 12px; }
-                  li { margin-bottom: 6px; }
-                  blockquote { border-left: 4px solid #d0d0d0; padding-left: 12px; margin: 12px 0; color: #626262; }
+                  strong { font-weight: 600; }
+                  ul { margin: 12px 0 12px 24px; }
+                  li { margin-bottom: 8px; }
+                  code { background: #f6f8fa; padding: 2px 6px; border-radius: 3px; font-family: monospace; }
                   .nav { margin-bottom: 30px; padding-bottom: 20px; border-bottom: 1px solid #e5e5e5; }
                   .nav a { margin-right: 15px; }
               </style>
@@ -111,15 +106,14 @@ jobs:
                   <a href="index.html">← Back to portfolio</a>
               </nav>
               <div class="container">
-                  ${content}
+                  ${html}
               </div>
           </body>
           </html>`;
               
-              fs.writeFileSync(path.join(outputDir, 'portfolio.html'), cleanHtml);
-              console.log('✓ Successfully fetched and rendered Notion page');
-              
-              await browser.close();
+              fs.writeFileSync(path.join(outputDir, 'portfolio.html'), fullHtml);
+              console.log('✓ Successfully converted Notion page to HTML');
+              console.log('Content length:', html.length);
             } catch (err) {
               console.error('Error:', err.message);
               process.exit(1);
