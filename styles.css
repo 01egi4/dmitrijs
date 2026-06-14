@@ -25,3 +25,17 @@
   word-break: normal;
   overflow-wrap: anywhere;
 }
+
+.notion-blank {
+  display: none !important;
+}
+
+.notion-row {
+  gap: 18px !important;
+  align-items: flex-start !important;
+}
+
+.notion-column {
+  flex: 1 1 160px !important;
+  min-width: 140px !important;
+}
