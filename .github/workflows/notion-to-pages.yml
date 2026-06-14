@@ -53,14 +53,28 @@ jobs:
               const response = await page.goto(NOTION_URL, { waitUntil: 'domcontentloaded', timeout: 30000 });
               console.log(`Response status: ${response.status()}`);
               
-              // Wait for content to render
-              await page.waitForTimeout(5000);
+              // Wait for Notion content to render
+              await page.waitForTimeout(8000);
+              
+              // Try to wait for main content area
+              try {
+                await page.waitForSelector('[role="main"], .notion-page-content, main', { timeout: 5000 });
+              } catch (e) {
+                console.log('Main content selector not found, continuing anyway');
+              }
               
               console.log('Extracting content...');
               const content = await page.evaluate(() => {
-                // Get the full page HTML
-                const html = document.documentElement.outerHTML;
-                return html;
+                // Try to find the main readable area
+                let mainContent = document.querySelector('[role="main"]') ||
+                                 document.querySelector('.notion-page-content') ||
+                                 document.querySelector('main') ||
+                                 document.body;
+                
+                if (mainContent) {
+                  return mainContent.innerHTML;
+                }
+                return document.documentElement.innerHTML;
               });
               
               console.log(`Content length: ${content.length} characters`);
@@ -79,19 +93,13 @@ jobs:
           }
 
           function extractPortfolioContent(html) {
-            // Look for content sections
-            const contentMatch = html.match(/<div[^>]*class="[^"]*notion[^"]*"[^>]*>.*?<\/div>/is);
-            if (contentMatch) {
-              return contentMatch[0];
-            }
+            // Remove all scripts and styles first
+            let cleaned = html.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
+            cleaned = cleaned.replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, '');
             
-            // Fallback: extract all text from body
-            const bodyMatch = html.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
-            if (bodyMatch) {
-              let body = bodyMatch[1];
-              body = body.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
-              body = body.replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, '');
-              return body;
+            // If we have substantial content, use it
+            if (cleaned.length > 500) {
+              return cleaned;
             }
             
             return '<p>Portfolio content could not be extracted</p>';
