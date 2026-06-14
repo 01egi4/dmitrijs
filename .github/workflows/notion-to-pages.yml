@@ -26,12 +26,12 @@ jobs:
         run: mkdir -p site
 
       - name: Install dependencies
-        run: npm install puppeteer
+        run: npm install playwright
 
       - name: Fetch and convert Notion content
         run: |
           cat > fetch-notion.js << 'SCRIPT'
-          const puppeteer = require('puppeteer');
+          const { chromium } = require('playwright');
           const fs = require('fs');
           const path = require('path');
 
@@ -41,31 +41,31 @@ jobs:
           async function fetchNotionPage() {
             let browser;
             try {
-              console.log('Launching browser...');
-              browser = await puppeteer.launch({
-                headless: 'new',
-                args: ['--no-sandbox', '--disable-setuid-sandbox']
-              });
+              console.log('Launching Playwright browser...');
+              browser = await chromium.launch({ headless: true });
               
-              const page = await browser.newPage();
-              console.log(`Fetching: ${NOTION_URL}`);
+              const context = await browser.createBrowserContext();
+              const page = await context.newPage();
               
-              await page.goto(NOTION_URL, { waitUntil: 'networkidle2', timeout: 30000 });
-              console.log('Page loaded, extracting content...');
+              console.log(`Navigating to: ${NOTION_URL}`);
+              const response = await page.goto(NOTION_URL, { waitUntil: 'networkidle', timeout: 60000 });
+              console.log(`Response status: ${response.status()}`);
               
+              // Wait for content to appear
+              await page.waitForTimeout(3000);
+              
+              console.log('Extracting content...');
               const content = await page.evaluate(() => {
-                // Remove scripts and styles
-                document.querySelectorAll('script, style, noscript').forEach(el => el.remove());
-                
-                // Find the main content container
-                let mainContent = document.querySelector('.notion-page-content') ||
-                                 document.querySelector('[role="main"]') ||
-                                 document.querySelector('main') ||
-                                 document.querySelector('.notion-scroller') ||
-                                 document.body;
-                
-                return mainContent.innerHTML;
+                // Get the full page HTML
+                const html = document.documentElement.outerHTML;
+                return html;
               });
+              
+              console.log(`Content length: ${content.length} characters`);
+              
+              // Save raw HTML for debugging
+              fs.writeFileSync(path.join(OUTPUT_DIR, 'debug.html'), content);
+              console.log('Saved debug.html');
               
               await browser.close();
               return content;
@@ -74,6 +74,25 @@ jobs:
               console.error('Failed to fetch Notion page:', error.message);
               throw error;
             }
+          }
+
+          function extractPortfolioContent(html) {
+            // Look for content sections
+            const contentMatch = html.match(/<div[^>]*class="[^"]*notion[^"]*"[^>]*>.*?<\/div>/is);
+            if (contentMatch) {
+              return contentMatch[0];
+            }
+            
+            // Fallback: extract all text from body
+            const bodyMatch = html.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
+            if (bodyMatch) {
+              let body = bodyMatch[1];
+              body = body.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
+              body = body.replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, '');
+              return body;
+            }
+            
+            return '<p>Portfolio content could not be extracted</p>';
           }
 
           async function generateHtml(title, content) {
@@ -117,7 +136,8 @@ jobs:
           }
 
           async function main() {
-            const content = await fetchNotionPage();
+            const rawHtml = await fetchNotionPage();
+            const content = extractPortfolioContent(rawHtml);
             const portfolioHtml = await generateHtml('Portfolio', content);
             
             fs.writeFileSync(path.join(OUTPUT_DIR, 'portfolio.html'), portfolioHtml);
@@ -125,7 +145,7 @@ jobs:
           }
 
           main().catch(err => {
-            console.error(err);
+            console.error('Error:', err);
             process.exit(1);
           });
           SCRIPT
