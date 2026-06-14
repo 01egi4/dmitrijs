@@ -26,59 +26,54 @@ jobs:
         run: mkdir -p site
 
       - name: Install dependencies
-        run: npm install cheerio axios
+        run: npm install puppeteer
 
       - name: Fetch and convert Notion content
         run: |
           cat > fetch-notion.js << 'SCRIPT'
-          const axios = require('axios');
-          const cheerio = require('cheerio');
+          const puppeteer = require('puppeteer');
           const fs = require('fs');
           const path = require('path');
 
           const NOTION_URL = 'https://dmitrijscelinskis.notion.site/portfolio';
           const OUTPUT_DIR = './site';
 
-          async function fetchNotionPage(url) {
+          async function fetchNotionPage() {
+            let browser;
             try {
-              console.log(`Fetching: ${url}`);
-              const response = await axios.get(url, {
-                headers: {
-                  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-                }
+              console.log('Launching browser...');
+              browser = await puppeteer.launch({
+                headless: 'new',
+                args: ['--no-sandbox', '--disable-setuid-sandbox']
               });
-              return response.data;
+              
+              const page = await browser.newPage();
+              console.log(`Fetching: ${NOTION_URL}`);
+              
+              await page.goto(NOTION_URL, { waitUntil: 'networkidle2', timeout: 30000 });
+              console.log('Page loaded, extracting content...');
+              
+              const content = await page.evaluate(() => {
+                // Remove scripts and styles
+                document.querySelectorAll('script, style, noscript').forEach(el => el.remove());
+                
+                // Find the main content container
+                let mainContent = document.querySelector('.notion-page-content') ||
+                                 document.querySelector('[role="main"]') ||
+                                 document.querySelector('main') ||
+                                 document.querySelector('.notion-scroller') ||
+                                 document.body;
+                
+                return mainContent.innerHTML;
+              });
+              
+              await browser.close();
+              return content;
             } catch (error) {
-              console.error(`Failed to fetch ${url}:`, error.message);
-              return null;
+              if (browser) await browser.close();
+              console.error('Failed to fetch Notion page:', error.message);
+              throw error;
             }
-          }
-
-          function extractContentFromHtml(html) {
-            const $ = cheerio.load(html);
-            
-            // Remove script and style elements
-            $('script, style, noscript').remove();
-            
-            // Get the main content area (Notion typically uses specific class structures)
-            let content = '';
-            
-            // Try to find the main content container
-            const mainContent = $('.notion-page-content, [role="main"], main, .notion-scroller');
-            if (mainContent.length > 0) {
-              content = mainContent.html();
-            } else {
-              // Fallback: get body content
-              content = $('body').html();
-            }
-            
-            // Clean up
-            content = content
-              .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
-              .replace(/onclick="[^"]*"/g, '')
-              .replace(/on\w+="[^"]*"/g, '');
-            
-            return content || '<p>No content found</p>';
           }
 
           async function generateHtml(title, content) {
@@ -101,11 +96,10 @@ jobs:
                   p { margin: 12px 0; }
                   a { color: #0969da; text-decoration: none; }
                   a:hover { text-decoration: underline; }
-                  .note { background: #f6f8fa; padding: 15px; border-left: 4px solid #0969da; margin: 20px 0; }
-                  .nav { margin-bottom: 30px; padding-bottom: 20px; border-bottom: 1px solid #e5e5e5; }
                   img { max-width: 100%; height: auto; margin: 10px 0; }
                   code { background: #f0f0f0; padding: 2px 6px; border-radius: 3px; font-family: monospace; }
                   pre { background: #f0f0f0; padding: 10px; overflow-x: auto; margin: 10px 0; }
+                  .nav { margin-bottom: 30px; padding-bottom: 20px; border-bottom: 1px solid #e5e5e5; }
               </style>
           </head>
           <body>
@@ -123,21 +117,17 @@ jobs:
           }
 
           async function main() {
-            const html = await fetchNotionPage(NOTION_URL);
-            
-            if (!html) {
-              console.error('Failed to fetch Notion page');
-              process.exit(1);
-            }
-
-            const content = extractContentFromHtml(html);
+            const content = await fetchNotionPage();
             const portfolioHtml = await generateHtml('Portfolio', content);
             
             fs.writeFileSync(path.join(OUTPUT_DIR, 'portfolio.html'), portfolioHtml);
             console.log('✓ Generated portfolio.html');
           }
 
-          main().catch(console.error);
+          main().catch(err => {
+            console.error(err);
+            process.exit(1);
+          });
           SCRIPT
           node fetch-notion.js
 
