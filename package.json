@@ -8,6 +8,7 @@
     "react-dom": "latest",
     "react-notion-x": "latest",
     "notion-client": "latest",
-    "notion-utils": "latest"
+    "notion-utils": "latest",
+    "notion-types": "latest"
   }
 }
